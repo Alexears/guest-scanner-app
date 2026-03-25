@@ -320,7 +320,13 @@
     });
 
     torchBtn.addEventListener('click', function () {
-      if (!html5QrCode || !isScannerRunning || !torchSupported) return;
+      if (!html5QrCode || !isScannerRunning) return;
+
+      if (!torchSupported) {
+        scanStatusEl.className = 'warn';
+        scanStatusEl.textContent = 'На этом устройстве вспышка через браузер не поддерживается.';
+        return;
+      }
 
       var nextState = !torchEnabled;
       html5QrCode.applyVideoConstraints({
@@ -676,12 +682,16 @@
     }
 
     function updateTorchButton() {
-      if (!torchSupported || !isScannerRunning) {
+      if (!isScannerRunning) {
         torchBtn.style.display = 'none';
         return;
       }
       torchBtn.style.display = 'inline-block';
-      torchBtn.textContent = torchEnabled ? 'Вспышка: вкл' : 'Вспышка: выкл';
+      if (torchSupported) {
+        torchBtn.textContent = torchEnabled ? 'Вспышка: вкл' : 'Вспышка: выкл';
+      } else {
+        torchBtn.textContent = 'Вспышка';
+      }
     }
 
     function showScannerError(error) {
