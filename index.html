@@ -3,34 +3,98 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Сканер браслетов</title>
+  <title>Админка + Сканер</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
+    * { box-sizing: border-box; }
     body {
-      font-family: Arial, sans-serif;
       margin: 0;
       min-height: 100vh;
+      font-family: Arial, sans-serif;
       background: #0f1115;
       color: #f3f4f6;
     }
     .page {
-      max-width: 720px;
+      max-width: 1380px;
       margin: 0 auto;
-      padding: 28px 20px 40px;
+      padding: 24px 18px 40px;
     }
     h1 {
       font-size: 2rem;
-      margin: 0 0 20px;
+      margin: 0 0 8px;
     }
-    .controls {
+    .muted {
+      color: #9ca3af;
+      line-height: 1.45;
+    }
+    .status-box,
+    .panel {
+      background: #151922;
+      border: 1px solid #2b313b;
+      border-radius: 18px;
+      padding: 18px;
+    }
+    .status-box {
+      margin: 18px 0 22px;
+      line-height: 1.6;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 460px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    .left-stack {
+      display: grid;
+      gap: 18px;
+    }
+    .scanner-title, .form-title {
+      font-size: 1.05rem;
+      margin-bottom: 10px;
+      color: #f3f4f6;
+    }
+    #reader {
+      display: block;
+      width: 100%;
+      min-height: 300px;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid #2b313b;
+      background: #0f1115;
+      padding: 10px;
+    }
+    #camera-info {
+      margin-top: 10px;
+      color: #9ca3af;
+      font-size: 0.95rem;
+    }
+    label {
+      display: block;
+      margin-bottom: 14px;
+      font-size: 0.95rem;
+      color: #d1d5db;
+    }
+    input[type="text"], input[type="file"] {
+      width: 100%;
+      padding: 12px 14px;
+      margin-top: 6px;
+      font-size: 1rem;
+      border-radius: 12px;
+      border: 1px solid #2b313b;
+      background: #0f1115;
+      color: #f3f4f6;
+    }
+    input::placeholder { color: #6b7280; }
+    .buttons {
       display: flex;
-      gap: 12px;
       flex-wrap: wrap;
-      align-items: center;
+      gap: 10px;
+      margin-top: 6px;
     }
     button {
-      padding: 14px 22px;
-      font-size: 1.05rem;
+      padding: 12px 18px;
+      font-size: 1rem;
       cursor: pointer;
       border-radius: 12px;
       border: 1px solid #2b313b;
@@ -38,96 +102,218 @@
       color: #f3f4f6;
     }
     button:hover { background: #222834; }
-    button:disabled {
-      opacity: 0.55;
-      cursor: not-allowed;
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .right-panel {
+      min-height: 760px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
     }
-    #reader {
-      display: none;
-      margin-top: 18px;
-      max-width: 440px;
-      border-radius: 16px;
-      overflow: hidden;
-      border: 1px solid #2b313b;
-      background: #151922;
-      padding: 10px;
-    }
-    #preview {
-      margin-top: 18px;
-      max-width: 440px;
-      padding: 14px;
-      border-radius: 16px;
-      border: 1px solid #2b313b;
-      background: #151922;
-    }
-    #preview img {
+    #result img {
       max-width: 100%;
+      max-height: 72vh;
       border: 1px solid #2b313b;
-      border-radius: 12px;
+      border-radius: 16px;
       display: block;
+      margin-top: 12px;
+      background: #0f1115;
     }
-    .error {
-      margin-top: 16px;
-      color: #ff8a8a;
-      font-size: 1rem;
+    .ok { color: #7ee787; }
+    .warn { color: #f0b429; }
+    .error { color: #ff8a8a; }
+    .card-title {
+      font-size: 1.1rem;
+      margin-bottom: 6px;
+    }
+    .empty-state {
+      min-height: 560px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px dashed #2b313b;
+      border-radius: 16px;
+      color: #6b7280;
+      text-align: center;
+      padding: 24px;
+    }
+    .scan-status {
+      margin-top: 12px;
       line-height: 1.4;
     }
-    .ok {
-      margin-top: 14px;
-      color: #7ee787;
-      line-height: 1.4;
-    }
-    .muted {
-      margin-top: 8px;
-      color: #9ca3af;
-      line-height: 1.4;
-    }
-    .camera-badge {
-      margin-top: 10px;
-      color: #9ca3af;
-      font-size: 0.95rem;
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      .right-panel { min-height: auto; }
+      #result img { max-height: none; }
     }
   </style>
 </head>
 <body>
   <div class="page">
-    <h1>Сканер браслетов</h1>
+    <h1>Админка + Сканер</h1>
+    <p class="muted">Теперь всё на одном экране: камера, ручной ввод имени/фамилии/кода и кнопка вывода на внешний монитор.</p>
 
-    <div class="controls">
-      <button id="scan-btn">Сканировать</button>
-      <button id="switch-btn" style="display:none;">Сменить камеру</button>
+    <div class="status-box">
+      <div>Статус связи с сервером: <strong id="server-status" class="warn">проверка...</strong></div>
+      <div>Последний скан с сервера: <strong id="last-scan-info">—</strong></div>
     </div>
 
-    <div id="reader"></div>
-    <div id="camera-info" class="camera-badge"></div>
-    <div id="status"></div>
-    <div id="preview"></div>
+    <div class="layout">
+      <div class="left-stack">
+        <div class="panel">
+          <div class="scanner-title">Сканер браслетов</div>
+          <div id="reader"></div>
+          <div id="camera-info"></div>
+          <div id="scan-status" class="scan-status muted">Камера запускается автоматически. Если браслет не считывается, введите данные вручную ниже.</div>
+          <div class="buttons">
+            <button id="switch-btn" style="display:none;">Сменить камеру</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="form-title">Ручной поиск / корректировка</div>
+
+          <label>Excel файл (code, first_name, last_name)
+            <input type="file" id="excel-file" accept=".xls,.xlsx">
+          </label>
+
+          <label>Имя
+            <input type="text" id="first-name" placeholder="Введите имя">
+          </label>
+
+          <label>Фамилия
+            <input type="text" id="last-name" placeholder="Введите фамилию">
+          </label>
+
+          <label>Код
+            <input type="text" id="code" placeholder="001">
+          </label>
+
+          <div class="buttons">
+            <button id="search-btn">Найти</button>
+            <button id="display-btn" style="display:none;">Вывести на экран</button>
+            <button id="reset-btn">Сбросить состояние</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel right-panel">
+        <div id="result">
+          <div class="empty-state">Карточка гостя появится здесь</div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
-    var scanBtn = document.getElementById('scan-btn');
+    var guests = [];
+    var lastSeenScanAt = null;
+
+    var excelInput = document.getElementById('excel-file');
+    var firstNameEl = document.getElementById('first-name');
+    var lastNameEl = document.getElementById('last-name');
+    var codeEl = document.getElementById('code');
+    var resultEl = document.getElementById('result');
+    var displayBtn = document.getElementById('display-btn');
+    var serverStatusEl = document.getElementById('server-status');
+    var lastScanInfoEl = document.getElementById('last-scan-info');
+
     var switchBtn = document.getElementById('switch-btn');
     var readerEl = document.getElementById('reader');
-    var statusEl = document.getElementById('status');
-    var previewEl = document.getElementById('preview');
     var cameraInfoEl = document.getElementById('camera-info');
+    var scanStatusEl = document.getElementById('scan-status');
 
     var html5QrCode = null;
-    var permissionAsked = false;
     var cameras = [];
     var currentCameraIndex = 0;
     var isScannerRunning = false;
+    var lastScannedCode = null;
+    var lastScannedAt = 0;
 
-    scanBtn.addEventListener('click', function () {
-      statusEl.innerHTML = '';
-      previewEl.innerHTML = '';
+    window.addEventListener('load', function () {
+      autoStartScanner();
+      pollState();
+      setInterval(pollState, 700);
+    });
 
-      if (typeof Html5Qrcode === 'undefined') {
-        showError(new Error('Библиотека сканера не загрузилась. Проверьте интернет и откройте страницу в Chrome.'));
-        return;
-      }
+    excelInput.addEventListener('change', function (evt) {
+      var file = evt.target.files[0];
+      if (!file) return;
 
-      requestPermissionAndStart();
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var data = new Uint8Array(e.target.result);
+        var workbook = XLSX.read(data, { type: 'array' });
+        var sheetName = workbook.SheetNames[0];
+        var sheet = workbook.Sheets[sheetName];
+        var rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        var header = rows[0] || [];
+        var body = rows.slice(1);
+
+        var codeIdx = header.indexOf('code');
+        var firstIdx = header.indexOf('first_name');
+        var lastIdx = header.indexOf('last_name');
+
+        guests = body.map(function (row) {
+          var code = row[codeIdx] != null ? String(row[codeIdx]).trim() : '';
+          if (code.length < 3) code = ('000' + code).slice(-3);
+          return {
+            code: code,
+            first_name: row[firstIdx] != null ? String(row[firstIdx]).trim() : '',
+            last_name: row[lastIdx] != null ? String(row[lastIdx]).trim() : '',
+            image: code ? code + '.jpg' : ''
+          };
+        }).filter(function (g) { return g.code; });
+
+        alert('Гости загружены: ' + guests.length);
+
+        if (codeEl.value.trim()) {
+          applyCodeLookup();
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    document.getElementById('search-btn').addEventListener('click', function () {
+      applyCurrentFilters();
+    });
+
+    codeEl.addEventListener('input', function () {
+      applyCodeLookup();
+    });
+
+    codeEl.addEventListener('blur', function () {
+      var code = normalizeCode(codeEl.value.trim());
+      if (code) codeEl.value = code;
+      applyCodeLookup();
+    });
+
+    firstNameEl.addEventListener('input', function () {
+      if (!codeEl.value.trim()) applyCurrentFilters();
+    });
+
+    lastNameEl.addEventListener('input', function () {
+      if (!codeEl.value.trim()) applyCurrentFilters();
+    });
+
+    displayBtn.addEventListener('click', function () {
+      var code = normalizeCode(codeEl.value.trim());
+      if (!code) return;
+
+      fetch('/api/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code })
+      }).then(function () {
+        alert('Карточка ' + code + ' отправлена на экран');
+      });
+    });
+
+    document.getElementById('reset-btn').addEventListener('click', function () {
+      fetch('/api/reset', { method: 'POST' }).then(function () {
+        lastSeenScanAt = null;
+        lastScanInfoEl.textContent = '—';
+        alert('Состояние сервера сброшено');
+      });
     });
 
     switchBtn.addEventListener('click', function () {
@@ -142,24 +328,169 @@
         })
         .catch(function (error) {
           switchBtn.disabled = false;
-          showError(error);
+          showScannerError(error);
         });
     });
 
-    function requestPermissionAndStart() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showError(new Error('Браузер не поддерживает доступ к камере.'));
+    function normalizeCode(code) {
+      if (!code) return '';
+      if (code.length < 3) return ('000' + code).slice(-3);
+      return code;
+    }
+
+    function findGuestByCode(code) {
+      var normalized = normalizeCode(code);
+      if (!normalized) return null;
+      for (var i = 0; i < guests.length; i++) {
+        if (guests[i].code === normalized) return guests[i];
+      }
+      return null;
+    }
+
+    function findGuestByFilters() {
+      var first = firstNameEl.value.trim().toLowerCase();
+      var last = lastNameEl.value.trim().toLowerCase();
+      var code = normalizeCode(codeEl.value.trim());
+
+      for (var i = 0; i < guests.length; i++) {
+        var g = guests[i];
+        if ((!first || g.first_name.toLowerCase() === first) &&
+            (!last || g.last_name.toLowerCase() === last) &&
+            (!code || g.code === code)) {
+          return g;
+        }
+      }
+      return null;
+    }
+
+    function applyCodeLookup() {
+      var rawCode = codeEl.value.trim();
+      if (!rawCode) {
+        if (!firstNameEl.value.trim() && !lastNameEl.value.trim()) {
+          renderEmptyState();
+        }
         return;
       }
 
-      if (permissionAsked) {
-        loadCamerasAndStart();
+      var normalized = normalizeCode(rawCode);
+      var guest = findGuestByCode(normalized);
+
+      if (guest) {
+        firstNameEl.value = guest.first_name;
+        lastNameEl.value = guest.last_name;
+        codeEl.value = guest.code;
+        renderGuest(guest);
+      } else {
+        firstNameEl.value = '';
+        lastNameEl.value = '';
+        renderGuest(null, normalized);
+      }
+    }
+
+    function applyCurrentFilters() {
+      var guest = findGuestByFilters();
+      if (guest) {
+        firstNameEl.value = guest.first_name;
+        lastNameEl.value = guest.last_name;
+        codeEl.value = guest.code;
+        renderGuest(guest);
+      } else {
+        var code = normalizeCode(codeEl.value.trim());
+        renderGuest(null, code);
+      }
+    }
+
+    function renderEmptyState() {
+      resultEl.innerHTML = '<div class="empty-state">Карточка гостя появится здесь</div>';
+      displayBtn.style.display = 'none';
+    }
+
+    function renderGuest(guest, fallbackCode) {
+      var code = normalizeCode(fallbackCode || codeEl.value.trim());
+
+      if (!guest) {
+        if (code) {
+          resultEl.innerHTML =
+            '<div class="card-title"><strong>Код: ' + code + '</strong></div>' +
+            '<img src="' + code + '.jpg" alt="Карточка ' + code + '">' +
+            '<div class="muted">Гость в Excel не найден. Проверяю картинку по коду.</div>' +
+            '<div class="muted" id="img-missing"></div>';
+
+          var img = resultEl.querySelector('img');
+          if (img) {
+            img.onerror = function () {
+              this.style.display = 'none';
+              var miss = document.getElementById('img-missing');
+              if (miss) miss.textContent = 'Картинка ' + code + '.jpg не найдена.';
+            };
+          }
+          displayBtn.style.display = 'inline-block';
+        } else {
+          renderEmptyState();
+        }
+        return;
+      }
+
+      firstNameEl.value = guest.first_name;
+      lastNameEl.value = guest.last_name;
+      codeEl.value = guest.code;
+
+      resultEl.innerHTML =
+        '<div class="card-title"><strong>' + guest.first_name + ' ' + guest.last_name + '</strong> (Код: ' + guest.code + ')</div>' +
+        '<img src="' + guest.image + '" alt="Карточка гостя">' +
+        '<div class="muted" id="img-missing"></div>';
+
+      var img2 = resultEl.querySelector('img');
+      if (img2) {
+        img2.onerror = function () {
+          this.style.display = 'none';
+          var miss2 = document.getElementById('img-missing');
+          if (miss2) miss2.textContent = 'Картинка ' + guest.image + ' не найдена.';
+        };
+      }
+
+      displayBtn.style.display = 'inline-block';
+    }
+
+    function pollState() {
+      fetch('/api/state?t=' + Date.now(), { cache: 'no-store' })
+        .then(function (res) { return res.json(); })
+        .then(function (state) {
+          serverStatusEl.textContent = 'сервер на связи';
+          serverStatusEl.className = 'ok';
+
+          if (state.last_scan) {
+            var when = state.last_scan_at ? new Date(state.last_scan_at).toLocaleTimeString() : '';
+            lastScanInfoEl.textContent = state.last_scan + (when ? ' • ' + when : '');
+          } else {
+            lastScanInfoEl.textContent = '—';
+          }
+
+          if (state.last_scan_at && state.last_scan_at !== lastSeenScanAt) {
+            lastSeenScanAt = state.last_scan_at;
+            codeEl.value = state.last_scan || '';
+            applyCodeLookup();
+          }
+        })
+        .catch(function () {
+          serverStatusEl.textContent = 'нет связи с сервером';
+          serverStatusEl.className = 'warn';
+        });
+    }
+
+    function autoStartScanner() {
+      if (typeof Html5Qrcode === 'undefined') {
+        showScannerError(new Error('Библиотека сканера не загрузилась. Проверьте интернет и откройте страницу в Chrome.'));
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showScannerError(new Error('Браузер не поддерживает доступ к камере.'));
         return;
       }
 
       navigator.mediaDevices.getUserMedia({ video: true, audio: false })
         .then(function (stream) {
-          permissionAsked = true;
           var tracks = stream.getTracks();
           for (var i = 0; i < tracks.length; i++) {
             tracks[i].stop();
@@ -167,7 +498,7 @@
           loadCamerasAndStart();
         })
         .catch(function (error) {
-          showError(error);
+          showScannerError(error);
         });
     }
 
@@ -188,13 +519,12 @@
           startWithCurrentCamera();
         })
         .catch(function (error) {
-          showError(error);
+          showScannerError(error);
         });
     }
 
     function pickPreferredCameraIndex(list) {
       var preferredIndex = 0;
-
       for (var i = 0; i < list.length; i++) {
         var label = (list[i].label || '').toLowerCase();
         if (
@@ -209,16 +539,13 @@
           break;
         }
       }
-
       return preferredIndex;
     }
 
     function startWithCurrentCamera() {
-      scanBtn.style.display = 'none';
-      readerEl.style.display = 'block';
+      readerEl.innerHTML = '';
       switchBtn.style.display = cameras.length > 1 ? 'inline-block' : 'none';
       switchBtn.disabled = cameras.length <= 1;
-      readerEl.innerHTML = '';
 
       var selectedCamera = cameras[currentCameraIndex];
       cameraInfoEl.textContent = selectedCamera && selectedCamera.label
@@ -253,8 +580,10 @@
       ).then(function () {
         isScannerRunning = true;
         switchBtn.disabled = cameras.length <= 1;
+        scanStatusEl.className = 'scan-status muted';
+        scanStatusEl.textContent = 'Сканер активен. Наведите камеру на штрихкод браслета.';
       }).catch(function (error) {
-        showError(error);
+        showScannerError(error);
       });
     }
 
@@ -264,6 +593,13 @@
         code = ('000' + code).slice(-3);
       }
 
+      var now = Date.now();
+      if (lastScannedCode === code && now - lastScannedAt < 2500) {
+        return;
+      }
+      lastScannedCode = code;
+      lastScannedAt = now;
+
       fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -271,34 +607,16 @@
       })
       .then(function (res) { return res.json(); })
       .then(function (data) {
-        if (html5QrCode) {
-          html5QrCode.stop().catch(function () {});
-        }
-
-        isScannerRunning = false;
-        readerEl.style.display = 'none';
-        scanBtn.style.display = 'inline-block';
-        switchBtn.style.display = 'none';
-        cameraInfoEl.textContent = '';
-
-        statusEl.innerHTML = '<div class="ok">Успешно отсканировано: <strong>' +
-          data.last_scan + '</strong>. Код отправлен в админку.</div>';
-
-        previewEl.innerHTML =
-          '<img src="' + data.last_scan + '.jpg" alt="Карточка ' + data.last_scan + '"' +
-          ' onerror="this.style.display=\'none\'; document.getElementById(\'preview\').innerHTML += \'<div class=&quot;muted&quot;>Картинка ' + data.last_scan + '.jpg не найдена.</div>\';">' +
-          '<div class="muted">Превью карточки после сканирования</div>';
+        scanStatusEl.className = 'scan-status ok';
+        scanStatusEl.innerHTML = 'Успешно отсканировано: <strong>' + data.last_scan + '</strong>. Данные отправлены в форму.';
       })
       .catch(function (error) {
-        showError(error);
+        showScannerError(error);
       });
     }
 
-    function showError(error) {
-      console.error(error);
+    function showScannerError(error) {
       isScannerRunning = false;
-      readerEl.style.display = 'none';
-      scanBtn.style.display = 'inline-block';
       switchBtn.style.display = 'none';
       cameraInfoEl.textContent = '';
 
@@ -309,7 +627,8 @@
         message += ' ' + error.message;
       }
 
-      statusEl.innerHTML = '<div class="error">' + message + '</div>';
+      scanStatusEl.className = 'scan-status error';
+      scanStatusEl.textContent = message;
     }
   </script>
 </body>
