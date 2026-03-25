@@ -22,9 +22,15 @@
       font-size: 2rem;
       margin: 0 0 20px;
     }
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
     button {
       padding: 14px 22px;
-      font-size: 1.1rem;
+      font-size: 1.05rem;
       cursor: pointer;
       border-radius: 12px;
       border: 1px solid #2b313b;
@@ -32,6 +38,10 @@
       color: #f3f4f6;
     }
     button:hover { background: #222834; }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
     #reader {
       display: none;
       margin-top: 18px;
@@ -72,24 +82,41 @@
       color: #9ca3af;
       line-height: 1.4;
     }
+    .camera-badge {
+      margin-top: 10px;
+      color: #9ca3af;
+      font-size: 0.95rem;
+    }
   </style>
 </head>
 <body>
   <div class="page">
     <h1>Сканер браслетов</h1>
-    <button id="scan-btn">Сканировать</button>
+
+    <div class="controls">
+      <button id="scan-btn">Сканировать</button>
+      <button id="switch-btn" style="display:none;">Сменить камеру</button>
+    </div>
+
     <div id="reader"></div>
+    <div id="camera-info" class="camera-badge"></div>
     <div id="status"></div>
     <div id="preview"></div>
   </div>
 
   <script>
     var scanBtn = document.getElementById('scan-btn');
+    var switchBtn = document.getElementById('switch-btn');
     var readerEl = document.getElementById('reader');
     var statusEl = document.getElementById('status');
     var previewEl = document.getElementById('preview');
+    var cameraInfoEl = document.getElementById('camera-info');
+
     var html5QrCode = null;
     var permissionAsked = false;
+    var cameras = [];
+    var currentCameraIndex = 0;
+    var isScannerRunning = false;
 
     scanBtn.addEventListener('click', function () {
       statusEl.innerHTML = '';
@@ -103,6 +130,22 @@
       requestPermissionAndStart();
     });
 
+    switchBtn.addEventListener('click', function () {
+      if (!cameras.length || !html5QrCode || !isScannerRunning) return;
+
+      switchBtn.disabled = true;
+      html5QrCode.stop()
+        .then(function () {
+          isScannerRunning = false;
+          currentCameraIndex = (currentCameraIndex + 1) % cameras.length;
+          startWithCurrentCamera();
+        })
+        .catch(function (error) {
+          switchBtn.disabled = false;
+          showError(error);
+        });
+    });
+
     function requestPermissionAndStart() {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         showError(new Error('Браузер не поддерживает доступ к камере.'));
@@ -110,7 +153,7 @@
       }
 
       if (permissionAsked) {
-        startScanner();
+        loadCamerasAndStart();
         return;
       }
 
@@ -121,54 +164,95 @@
           for (var i = 0; i < tracks.length; i++) {
             tracks[i].stop();
           }
-          startScanner();
+          loadCamerasAndStart();
         })
         .catch(function (error) {
           showError(error);
         });
     }
 
-    function startScanner() {
-      scanBtn.style.display = 'none';
-      readerEl.style.display = 'block';
-      readerEl.innerHTML = '';
+    function loadCamerasAndStart() {
+      Html5Qrcode.getCameras()
+        .then(function (availableCameras) {
+          if (!availableCameras || availableCameras.length === 0) {
+            throw new Error('Браузер не нашёл ни одной камеры.');
+          }
 
-      if (!html5QrCode) {
-        html5QrCode = new Html5Qrcode('reader');
+          cameras = availableCameras;
+          currentCameraIndex = pickPreferredCameraIndex(cameras);
+
+          if (!html5QrCode) {
+            html5QrCode = new Html5Qrcode('reader');
+          }
+
+          startWithCurrentCamera();
+        })
+        .catch(function (error) {
+          showError(error);
+        });
+    }
+
+    function pickPreferredCameraIndex(list) {
+      var preferredIndex = 0;
+
+      for (var i = 0; i < list.length; i++) {
+        var label = (list[i].label || '').toLowerCase();
+        if (
+          label.indexOf('back') !== -1 ||
+          label.indexOf('rear') !== -1 ||
+          label.indexOf('environment') !== -1 ||
+          label.indexOf('trás') !== -1 ||
+          label.indexOf('tras') !== -1 ||
+          label.indexOf('зад') !== -1
+        ) {
+          preferredIndex = i;
+          break;
+        }
       }
 
-      Html5Qrcode.getCameras().then(function (cameras) {
-        if (!cameras || cameras.length === 0) {
-          throw new Error('Браузер не нашёл ни одной камеры.');
+      return preferredIndex;
+    }
+
+    function startWithCurrentCamera() {
+      scanBtn.style.display = 'none';
+      readerEl.style.display = 'block';
+      switchBtn.style.display = cameras.length > 1 ? 'inline-block' : 'none';
+      switchBtn.disabled = cameras.length <= 1;
+      readerEl.innerHTML = '';
+
+      var selectedCamera = cameras[currentCameraIndex];
+      cameraInfoEl.textContent = selectedCamera && selectedCamera.label
+        ? 'Текущая камера: ' + selectedCamera.label
+        : 'Текущая камера: #' + (currentCameraIndex + 1);
+
+      var config = {
+        fps: 10,
+        qrbox: { width: 250, height: 180 },
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ],
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: false
         }
+      };
 
-        var cameraId = cameras[0].id;
-        var config = {
-          fps: 10,
-          qrbox: { width: 250, height: 180 },
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.ITF,
-            Html5QrcodeSupportedFormats.QR_CODE
-          ],
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: false
-          }
-        };
-
-        return html5QrCode.start(
-          cameraId,
-          config,
-          function (decodedText) {
-            submitScan(decodedText);
-          },
-          function () {}
-        );
+      html5QrCode.start(
+        selectedCamera.id,
+        config,
+        function (decodedText) {
+          submitScan(decodedText);
+        },
+        function () {}
+      ).then(function () {
+        isScannerRunning = true;
+        switchBtn.disabled = cameras.length <= 1;
       }).catch(function (error) {
         showError(error);
       });
@@ -191,8 +275,12 @@
           html5QrCode.stop().catch(function () {});
         }
 
+        isScannerRunning = false;
         readerEl.style.display = 'none';
         scanBtn.style.display = 'inline-block';
+        switchBtn.style.display = 'none';
+        cameraInfoEl.textContent = '';
+
         statusEl.innerHTML = '<div class="ok">Успешно отсканировано: <strong>' +
           data.last_scan + '</strong>. Код отправлен в админку.</div>';
 
@@ -208,8 +296,11 @@
 
     function showError(error) {
       console.error(error);
+      isScannerRunning = false;
       readerEl.style.display = 'none';
       scanBtn.style.display = 'inline-block';
+      switchBtn.style.display = 'none';
+      cameraInfoEl.textContent = '';
 
       var message = 'Сканер не запустился.';
       if (error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError')) {
