@@ -132,6 +132,7 @@
       <div class="buttons">
         <button id="rescan-btn" style="display:none;">Новое сканирование</button>
         <button id="switch-btn" style="display:none;">Сменить камеру</button>
+        <button id="torch-btn" style="display:none;">Вспышка: выкл</button>
       </div>
       <div id="scan-status" class="muted" style="margin-top:12px;">Камера запускается автоматически. После успешного сканирования камера остановится.</div>
     </div>
@@ -194,6 +195,7 @@
 
     var rescanBtn = document.getElementById('rescan-btn');
     var switchBtn = document.getElementById('switch-btn');
+    var torchBtn = document.getElementById('torch-btn');
     var readerEl = document.getElementById('reader');
     var cameraInfoEl = document.getElementById('camera-info');
     var scanStatusEl = document.getElementById('scan-status');
@@ -203,6 +205,8 @@
     var currentCameraIndex = 0;
     var isScannerRunning = false;
     var isProcessingScan = false;
+    var torchSupported = false;
+    var torchEnabled = false;
 
     window.addEventListener('load', function () {
       renderEmptyCard();
@@ -313,6 +317,21 @@
           switchBtn.disabled = false;
           showScannerError(error);
         });
+    });
+
+    torchBtn.addEventListener('click', function () {
+      if (!html5QrCode || !isScannerRunning || !torchSupported) return;
+
+      var nextState = !torchEnabled;
+      html5QrCode.applyVideoConstraints({
+        advanced: [{ torch: nextState }]
+      }).then(function () {
+        torchEnabled = nextState;
+        updateTorchButton();
+      }).catch(function () {
+        scanStatusEl.className = 'warn';
+        scanStatusEl.textContent = 'Не удалось переключить вспышку на этом устройстве.';
+      });
     });
 
     function normalizeCode(code) {
@@ -633,16 +652,45 @@
         scanStatusEl.innerHTML = 'Успешно отсканировано: <strong>' + data.last_scan + '</strong>. Камера остановлена.';
         rescanBtn.style.display = 'inline-block';
         switchBtn.style.display = 'none';
+        torchBtn.style.display = 'none';
+        torchEnabled = false;
+        torchSupported = false;
+        updateTorchButton();
       })
       .catch(function (error) {
         showScannerError(error);
       });
     }
 
+    function detectTorchSupport() {
+      try {
+        var capabilities = html5QrCode.getRunningTrackCapabilities ? html5QrCode.getRunningTrackCapabilities() : null;
+        torchSupported = !!(capabilities && capabilities.torch);
+        torchEnabled = false;
+        updateTorchButton();
+      } catch (e) {
+        torchSupported = false;
+        torchEnabled = false;
+        updateTorchButton();
+      }
+    }
+
+    function updateTorchButton() {
+      if (!torchSupported || !isScannerRunning) {
+        torchBtn.style.display = 'none';
+        return;
+      }
+      torchBtn.style.display = 'inline-block';
+      torchBtn.textContent = torchEnabled ? 'Вспышка: вкл' : 'Вспышка: выкл';
+    }
+
     function showScannerError(error) {
       isScannerRunning = false;
       isProcessingScan = false;
       switchBtn.style.display = 'none';
+      torchBtn.style.display = 'none';
+      torchEnabled = false;
+      torchSupported = false;
 
       var message = 'Сканер не запустился.';
       if (error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError')) {
