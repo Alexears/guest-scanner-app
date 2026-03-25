@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Админка</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      background: #0f1115;
+      color: #f3f4f6;
+    }
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 28px 20px 40px;
+    }
+    h1 {
+      font-size: 2rem;
+      margin: 0 0 10px;
+    }
+    .muted {
+      color: #9ca3af;
+      line-height: 1.45;
+    }
+    .status-box,
+    .panel {
+      background: #151922;
+      border: 1px solid #2b313b;
+      border-radius: 18px;
+      padding: 18px;
+    }
+    .status-box {
+      margin: 18px 0 22px;
+      line-height: 1.6;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    label {
+      display: block;
+      margin-bottom: 14px;
+      font-size: 0.95rem;
+      color: #d1d5db;
+    }
+    input[type="text"], input[type="file"] {
+      width: 100%;
+      padding: 12px 14px;
+      margin-top: 6px;
+      font-size: 1rem;
+      border-radius: 12px;
+      border: 1px solid #2b313b;
+      background: #0f1115;
+      color: #f3f4f6;
+    }
+    input::placeholder { color: #6b7280; }
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 6px;
+    }
+    button {
+      padding: 12px 18px;
+      font-size: 1rem;
+      cursor: pointer;
+      border-radius: 12px;
+      border: 1px solid #2b313b;
+      background: #1a1f27;
+      color: #f3f4f6;
+    }
+    button:hover { background: #222834; }
+    .right-panel {
+      min-height: 640px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+    #result {
+      width: 100%;
+    }
+    #result img {
+      max-width: 100%;
+      max-height: 72vh;
+      border: 1px solid #2b313b;
+      border-radius: 16px;
+      display: block;
+      margin-top: 12px;
+      background: #0f1115;
+    }
+    .ok { color: #7ee787; }
+    .warn { color: #f0b429; }
+    .card-title {
+      font-size: 1.1rem;
+      margin-bottom: 6px;
+    }
+    .empty-state {
+      min-height: 520px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px dashed #2b313b;
+      border-radius: 16px;
+      color: #6b7280;
+      text-align: center;
+      padding: 24px;
+    }
+    @media (max-width: 960px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+      .right-panel {
+        min-height: auto;
+      }
+      #result img {
+        max-height: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Админка</h1>
+    <p class="muted">Слева поиск и управление. Справа карточка гостя. Ручной ввод оставлен только здесь как запасной вариант.</p>
+
+    <div class="status-box">
+      <div>Статус связи с сервером: <strong id="server-status" class="warn">проверка...</strong></div>
+      <div>Последний скан с сервера: <strong id="last-scan-info">—</strong></div>
+    </div>
+
+    <div class="layout">
+      <div class="panel">
+        <label>Excel файл (code, first_name, last_name)
+          <input type="file" id="excel-file" accept=".xls,.xlsx">
+        </label>
+
+        <label>Имя
+          <input type="text" id="first-name" placeholder="Введите имя">
+        </label>
+
+        <label>Фамилия
+          <input type="text" id="last-name" placeholder="Введите фамилию">
+        </label>
+
+        <label>Код
+          <input type="text" id="code" placeholder="001">
+        </label>
+
+        <div class="buttons">
+          <button id="search-btn">Найти</button>
+          <button id="display-btn" style="display:none;">Вывести на экран</button>
+          <button id="reset-btn">Сбросить состояние</button>
+        </div>
+      </div>
+
+      <div class="panel right-panel">
+        <div id="result">
+          <div class="empty-state">Карточка гостя появится здесь</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var guests = [];
+    var lastSeenScanAt = null;
+
+    var excelInput = document.getElementById('excel-file');
+    var firstNameEl = document.getElementById('first-name');
+    var lastNameEl = document.getElementById('last-name');
+    var codeEl = document.getElementById('code');
+    var resultEl = document.getElementById('result');
+    var displayBtn = document.getElementById('display-btn');
+    var serverStatusEl = document.getElementById('server-status');
+    var lastScanInfoEl = document.getElementById('last-scan-info');
+
+    excelInput.addEventListener('change', function (evt) {
+      var file = evt.target.files[0];
+      if (!file) return;
+
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var data = new Uint8Array(e.target.result);
+        var workbook = XLSX.read(data, { type: 'array' });
+        var sheetName = workbook.SheetNames[0];
+        var sheet = workbook.Sheets[sheetName];
+        var rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        var header = rows[0] || [];
+        var body = rows.slice(1);
+
+        var codeIdx = header.indexOf('code');
+        var firstIdx = header.indexOf('first_name');
+        var lastIdx = header.indexOf('last_name');
+
+        guests = body.map(function (row) {
+          var code = row[codeIdx] != null ? String(row[codeIdx]).trim() : '';
+          if (code.length < 3) code = ('000' + code).slice(-3);
+          return {
+            code: code,
+            first_name: row[firstIdx] != null ? String(row[firstIdx]).trim() : '',
+            last_name: row[lastIdx] != null ? String(row[lastIdx]).trim() : '',
+            image: code ? code + '.jpg' : ''
+          };
+        }).filter(function (g) { return g.code; });
+
+        alert('Гости загружены: ' + guests.length);
+
+        if (codeEl.value.trim()) {
+          renderGuest(findGuest());
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    document.getElementById('search-btn').addEventListener('click', function () {
+      renderGuest(findGuest());
+    });
+
+    displayBtn.addEventListener('click', function () {
+      var code = codeEl.value.trim();
+      if (code.length < 3) code = ('000' + code).slice(-3);
+      if (!code) return;
+
+      fetch('/api/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code })
+      }).then(function () {
+        alert('Карточка ' + code + ' отправлена на экран');
+      });
+    });
+
+    document.getElementById('reset-btn').addEventListener('click', function () {
+      fetch('/api/reset', { method: 'POST' }).then(function () {
+        lastSeenScanAt = null;
+        lastScanInfoEl.textContent = '—';
+        alert('Состояние сервера сброшено');
+      });
+    });
+
+    function findGuest() {
+      var first = firstNameEl.value.trim().toLowerCase();
+      var last = lastNameEl.value.trim().toLowerCase();
+      var code = codeEl.value.trim();
+      if (code.length < 3 && code.length > 0) code = ('000' + code).slice(-3);
+
+      for (var i = 0; i < guests.length; i++) {
+        var g = guests[i];
+        if ((!first || g.first_name.toLowerCase() === first) &&
+            (!last || g.last_name.toLowerCase() === last) &&
+            (!code || g.code === code)) {
+          return g;
+        }
+      }
+      return null;
+    }
+
+    function renderGuest(guest) {
+      var code = codeEl.value.trim();
+      if (code.length < 3 && code.length > 0) code = ('000' + code).slice(-3);
+
+      if (!guest) {
+        if (code) {
+          resultEl.innerHTML =
+            '<div class="card-title"><strong>Код: ' + code + '</strong></div>' +
+            '<img src="' + code + '.jpg" alt="Карточка ' + code + '">' +
+            '<div class="muted">Гость в Excel не найден. Проверяю картинку по коду.</div>' +
+            '<div class="muted" id="img-missing"></div>';
+
+          var img = resultEl.querySelector('img');
+          if (img) {
+            img.onerror = function () {
+              this.style.display = 'none';
+              var miss = document.getElementById('img-missing');
+              if (miss) miss.textContent = 'Картинка ' + code + '.jpg не найдена.';
+            };
+          }
+          displayBtn.style.display = 'inline-block';
+        } else {
+          resultEl.innerHTML = '<div class="empty-state">Карточка гостя появится здесь</div>';
+          displayBtn.style.display = 'none';
+        }
+        return;
+      }
+
+      firstNameEl.value = guest.first_name;
+      lastNameEl.value = guest.last_name;
+      codeEl.value = guest.code;
+
+      resultEl.innerHTML =
+        '<div class="card-title"><strong>' + guest.first_name + ' ' + guest.last_name + '</strong> (Код: ' + guest.code + ')</div>' +
+        '<img src="' + guest.image + '" alt="Карточка гостя">' +
+        '<div class="muted" id="img-missing"></div>';
+
+      var img2 = resultEl.querySelector('img');
+      if (img2) {
+        img2.onerror = function () {
+          this.style.display = 'none';
+          var miss2 = document.getElementById('img-missing');
+          if (miss2) miss2.textContent = 'Картинка ' + guest.image + ' не найдена.';
+        };
+      }
+
+      displayBtn.style.display = 'inline-block';
+    }
+
+    function pollState() {
+      fetch('/api/state?t=' + Date.now(), { cache: 'no-store' })
+        .then(function (res) { return res.json(); })
+        .then(function (state) {
+          serverStatusEl.textContent = 'сервер на связи';
+          serverStatusEl.className = 'ok';
+
+          if (state.last_scan) {
+            var when = state.last_scan_at ? new Date(state.last_scan_at).toLocaleTimeString() : '';
+            lastScanInfoEl.textContent = state.last_scan + (when ? ' • ' + when : '');
+          } else {
+            lastScanInfoEl.textContent = '—';
+          }
+
+          if (state.last_scan_at && state.last_scan_at !== lastSeenScanAt) {
+            lastSeenScanAt = state.last_scan_at;
+            codeEl.value = state.last_scan || '';
+            renderGuest(findGuest());
+          }
+        })
+        .catch(function (err) {
+          console.error(err);
+          serverStatusEl.textContent = 'нет связи с сервером';
+          serverStatusEl.className = 'warn';
+        });
+    }
+
+    pollState();
+    setInterval(pollState, 700);
+  </script>
+</body>
+</html>

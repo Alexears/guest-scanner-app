@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Сканер браслетов</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f1115;
+      color: #f3f4f6;
+    }
+    .page {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 28px 20px 40px;
+    }
+    h1 {
+      font-size: 2rem;
+      margin: 0 0 20px;
+    }
+    button {
+      padding: 14px 22px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      border-radius: 12px;
+      border: 1px solid #2b313b;
+      background: #1a1f27;
+      color: #f3f4f6;
+    }
+    button:hover { background: #222834; }
+    #reader {
+      display: none;
+      margin-top: 18px;
+      max-width: 440px;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid #2b313b;
+      background: #151922;
+      padding: 10px;
+    }
+    #preview {
+      margin-top: 18px;
+      max-width: 440px;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid #2b313b;
+      background: #151922;
+    }
+    #preview img {
+      max-width: 100%;
+      border: 1px solid #2b313b;
+      border-radius: 12px;
+      display: block;
+    }
+    .error {
+      margin-top: 16px;
+      color: #ff8a8a;
+      font-size: 1rem;
+      line-height: 1.4;
+    }
+    .ok {
+      margin-top: 14px;
+      color: #7ee787;
+      line-height: 1.4;
+    }
+    .muted {
+      margin-top: 8px;
+      color: #9ca3af;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Сканер браслетов</h1>
+    <button id="scan-btn">Сканировать</button>
+    <div id="reader"></div>
+    <div id="status"></div>
+    <div id="preview"></div>
+  </div>
+
+  <script>
+    var scanBtn = document.getElementById('scan-btn');
+    var readerEl = document.getElementById('reader');
+    var statusEl = document.getElementById('status');
+    var previewEl = document.getElementById('preview');
+    var html5QrCode = null;
+    var permissionAsked = false;
+
+    scanBtn.addEventListener('click', function () {
+      statusEl.innerHTML = '';
+      previewEl.innerHTML = '';
+
+      if (typeof Html5Qrcode === 'undefined') {
+        showError(new Error('Библиотека сканера не загрузилась. Проверьте интернет и откройте страницу в Chrome.'));
+        return;
+      }
+
+      requestPermissionAndStart();
+    });
+
+    function requestPermissionAndStart() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showError(new Error('Браузер не поддерживает доступ к камере.'));
+        return;
+      }
+
+      if (permissionAsked) {
+        startScanner();
+        return;
+      }
+
+      navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        .then(function (stream) {
+          permissionAsked = true;
+          var tracks = stream.getTracks();
+          for (var i = 0; i < tracks.length; i++) {
+            tracks[i].stop();
+          }
+          startScanner();
+        })
+        .catch(function (error) {
+          showError(error);
+        });
+    }
+
+    function startScanner() {
+      scanBtn.style.display = 'none';
+      readerEl.style.display = 'block';
+      readerEl.innerHTML = '';
+
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode('reader');
+      }
+
+      Html5Qrcode.getCameras().then(function (cameras) {
+        if (!cameras || cameras.length === 0) {
+          throw new Error('Браузер не нашёл ни одной камеры.');
+        }
+
+        var cameraId = cameras[0].id;
+        var config = {
+          fps: 10,
+          qrbox: { width: 250, height: 180 },
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.ITF,
+            Html5QrcodeSupportedFormats.QR_CODE
+          ],
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: false
+          }
+        };
+
+        return html5QrCode.start(
+          cameraId,
+          config,
+          function (decodedText) {
+            submitScan(decodedText);
+          },
+          function () {}
+        );
+      }).catch(function (error) {
+        showError(error);
+      });
+    }
+
+    function submitScan(text) {
+      var code = String(text).trim();
+      if (code.length < 3) {
+        code = ('000' + code).slice(-3);
+      }
+
+      fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code })
+      })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (html5QrCode) {
+          html5QrCode.stop().catch(function () {});
+        }
+
+        readerEl.style.display = 'none';
+        scanBtn.style.display = 'inline-block';
+        statusEl.innerHTML = '<div class="ok">Успешно отсканировано: <strong>' +
+          data.last_scan + '</strong>. Код отправлен в админку.</div>';
+
+        previewEl.innerHTML =
+          '<img src="' + data.last_scan + '.jpg" alt="Карточка ' + data.last_scan + '"' +
+          ' onerror="this.style.display=\'none\'; document.getElementById(\'preview\').innerHTML += \'<div class=&quot;muted&quot;>Картинка ' + data.last_scan + '.jpg не найдена.</div>\';">' +
+          '<div class="muted">Превью карточки после сканирования</div>';
+      })
+      .catch(function (error) {
+        showError(error);
+      });
+    }
+
+    function showError(error) {
+      console.error(error);
+      readerEl.style.display = 'none';
+      scanBtn.style.display = 'inline-block';
+
+      var message = 'Сканер не запустился.';
+      if (error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError')) {
+        message += ' Разрешите доступ к камере.';
+      } else if (error && error.message) {
+        message += ' ' + error.message;
+      }
+
+      statusEl.innerHTML = '<div class="error">' + message + '</div>';
+    }
+  </script>
+</body>
+</html>
