@@ -37,22 +37,35 @@
     var placeholder = document.getElementById('placeholder');
     var lastCode = null;
 
+    function showCode(code) {
+      lastCode = code || '000';
+      image.src = lastCode + '.jpg';
+      image.style.display = 'block';
+      placeholder.style.display = 'none';
+      image.onerror = function () {
+        image.style.display = 'none';
+        placeholder.style.display = 'block';
+        placeholder.textContent = 'Картинка ' + lastCode + '.jpg не найдена';
+      };
+    }
+
     function pollState() {
       fetch('/api/state?t=' + Date.now(), { cache: 'no-store' })
         .then(function (res) { return res.json(); })
         .then(function (state) {
-          if (state.selected_guest_code && state.selected_guest_code !== lastCode) {
-            lastCode = state.selected_guest_code;
-            image.src = lastCode + '.jpg';
-            image.style.display = 'block';
-            placeholder.style.display = 'none';
+          var code = state.selected_guest_code || '000';
+          if (code !== lastCode) {
+            showCode(code);
           }
         })
-        .catch(function (err) {
-          console.error(err);
+        .catch(function () {
+          if (!lastCode) {
+            showCode('000');
+          }
         });
     }
 
+    showCode('000');
     pollState();
     setInterval(pollState, 700);
   </script>

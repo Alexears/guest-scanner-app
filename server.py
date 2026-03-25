@@ -9,7 +9,7 @@ STATE_PATH = os.path.join(BASE_DIR, "state.json")
 DEFAULT_STATE = {
     "last_scan": None,
     "last_scan_at": None,
-    "selected_guest_code": None,
+    "selected_guest_code": "000",
     "selected_guest_at": None
 }
 

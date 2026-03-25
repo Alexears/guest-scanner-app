@@ -191,14 +191,14 @@
           <div class="buttons">
             <button id="search-btn">Найти</button>
             <button id="display-btn" style="display:none;">Вывести на экран</button>
-            <button id="reset-btn">Сбросить состояние</button>
+            <button id="clear-screen-btn">Убрать с экранов</button>
           </div>
         </div>
       </div>
 
       <div class="panel right-panel">
         <div id="result">
-          <div class="empty-state">Карточка гостя появится здесь</div>
+          <div class="empty-state">Карточка гостя появится здесь. По умолчанию на внешнем экране стоит заглушка 000.</div>
         </div>
       </div>
     </div>
@@ -308,11 +308,13 @@
       });
     });
 
-    document.getElementById('reset-btn').addEventListener('click', function () {
-      fetch('/api/reset', { method: 'POST' }).then(function () {
-        lastSeenScanAt = null;
-        lastScanInfoEl.textContent = '—';
-        alert('Состояние сервера сброшено');
+    document.getElementById('clear-screen-btn').addEventListener('click', function () {
+      fetch('/api/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: '000' })
+      }).then(function () {
+        alert('На внешний экран отправлена заглушка 000');
       });
     });
 
